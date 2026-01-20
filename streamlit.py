@@ -145,7 +145,7 @@ if uploaded_file:
             try:
                 # Pastikan kolom-kolom ini ada di dataframe Anda
                 available_cols = df_step_2.columns.tolist()
-                target_cols = ['No','satker_paket_uraian','unor','Tahun','target_vol','target_satuan','jenispekerjaan','satker']
+                target_cols = ['No','satker_paket_uraian','unor','Tahun','target_vol','target_satuan','jenispekerjaan','satker','lokasi','jenis_pengadaan','metode_pemilihan','pagu_efektif','realisasi','progress_keu','progress_fisik']
                 
                 # Filter hanya kolom yang benar-benar ada untuk menghindari error
                 cols_to_use = [c for c in target_cols if c in available_cols]

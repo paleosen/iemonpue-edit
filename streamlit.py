@@ -86,9 +86,9 @@ if uploaded_file:
     
     unique_satkers = list(df_processed['satker'].unique())
 
-    # --- INISIALISASI STATE ---
-    if 'sort_data' not in st.session_state or st.session_state.get('last_file') != uploaded_file.name:
-        st.session_state.sort_data = [
+    # --- INISIALISASI STATE (Hanya Sekali per File) ---
+    if 'sort_data_state' not in st.session_state or st.session_state.get('last_file_processed') != uploaded_file.name:
+        st.session_state.sort_data_state = [
             {'header': 'Daftar Satker', 'items': unique_satkers},
             {'header': 'Pemda', 'items': []},
             {'header': 'BM', 'items': []},
@@ -97,19 +97,22 @@ if uploaded_file:
             {'header': 'PR', 'items': []},
             {'header': 'PS', 'items': []}
         ]
-        st.session_state.last_file = uploaded_file.name
+        st.session_state.last_file_processed = uploaded_file.name
 
-    # --- FORM INPUT ---
-    # Membungkus semua input ke dalam form agar tidak reload setiap ada perubahan kecil
-    with st.form("main_logic_form"):
-        st.subheader("1. Pemetaan Kategori Unor")
-        st.info("Susun daftar Satker ke kategori Unor di bawah ini.")
-        
-        # Sort items tetap bisa digunakan di dalam form untuk mengatur state
-        current_sort = sort_items(st.session_state.sort_data, multi_containers=True)
-        
-        st.divider()
-        
+    # --- BAGIAN INPUT ---
+    # Catatan: sort_items memiliki bug infinite loop jika dimasukkan ke dalam st.form pada beberapa versi.
+    # Kita menggunakannya di luar form tetapi hasilnya disimpan ke variabel temporary untuk diproses saat submit.
+    
+    st.subheader("1. Pemetaan Kategori Unor")
+    st.info("Susun daftar Satker ke kategori Unor di bawah ini (Drag & Drop).")
+    
+    # Gunakan variabel penampung sementara agar tidak langsung merusak state utama jika terjadi trigger otomatis
+    temp_sort_result = sort_items(st.session_state.sort_data_state, multi_containers=True)
+    
+    st.divider()
+    
+    # Gunakan form untuk tombol proses dan filter lainnya
+    with st.form("processing_form"):
         st.subheader("2. Seleksi Jenis Pekerjaan")
         all_jenis = [str(j) for j in df_processed['jenispekerjaan'].unique() if j is not None]
         pilihan_aktif = st.multiselect(
@@ -118,16 +121,15 @@ if uploaded_file:
             default=all_jenis
         )
         
-        st.divider()
-        
-        # Tombol tunggal untuk memicu proses
-        submit_button = st.form_submit_button("🚀 Proses dan Generate Hasil Akhir")
+        st.write("---")
+        submit_button = st.form_submit_button("🚀 Jalankan Proses dan Generate Excel")
 
     # --- LOGIKA EKSEKUSI ---
     if submit_button:
-        # Update session state dengan posisi terakhir dari sort_items
-        st.session_state.sort_data = current_sort
-        mapping_lists = {g['header']: g['items'] for g in current_sort}
+        # Sinkronisasi hasil sort ke state utama hanya saat tombol ditekan
+        st.session_state.sort_data_state = temp_sort_result
+        
+        mapping_lists = {g['header']: g['items'] for g in temp_sort_result}
         list_jenis_pekerjaan_dihapus = [j for j in all_jenis if j not in pilihan_aktif]
 
         with st.spinner("Sedang memproses data..."):
@@ -141,8 +143,17 @@ if uploaded_file:
             df_step_2['No'] = range(1, len(df_step_2) + 1)
             
             try:
-                df_final = df_step_2[['No','satker_paket_uraian','unor','Tahun','target_vol','target_satuan','jenispekerjaan','satker']].rename(columns={
-                    'satker_paket_uraian': 'Uraian Pekerjaan','target_vol': 'Volume','target_satuan': 'Satuan'
+                # Pastikan kolom-kolom ini ada di dataframe Anda
+                available_cols = df_step_2.columns.tolist()
+                target_cols = ['No','satker_paket_uraian','unor','Tahun','target_vol','target_satuan','jenispekerjaan','satker']
+                
+                # Filter hanya kolom yang benar-benar ada untuk menghindari error
+                cols_to_use = [c for c in target_cols if c in available_cols]
+                
+                df_final = df_step_2[cols_to_use].rename(columns={
+                    'satker_paket_uraian': 'Uraian Pekerjaan',
+                    'target_vol': 'Volume',
+                    'target_satuan': 'Satuan'
                 })
                 
                 st.success("Pemrosesan Berhasil!")
@@ -159,12 +170,13 @@ if uploaded_file:
                     file_name=f'hasil_proses_{uploaded_file.name}',
                     mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 )
-            except KeyError as e:
-                st.error(f"Kesalahan kolom data: {e}. Pastikan file input sesuai format.")
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat menyusun data: {e}")
 
 else:
     st.info("Silakan unggah file Excel untuk memulai.")
 
-# --- REFERENSI ---
-# Streamlit Inc. (2024). Batch input widgets with st.form. Streamlit Documentation. https://docs.streamlit.io/develop/api-reference/execution-flow/st.form
+# --- SUMBER REFERENSI ---
 # Facebook. (n.d.). React Error #185: Maximum update depth exceeded. React Documentation. https://reactjs.org/docs/error-decoder.html?invariant=185
+# Streamlit Inc. (2024). Batch input widgets with st.form. Streamlit Documentation. https://docs.streamlit.io/develop/api-reference/execution-flow/st.form
+# Ghaisani, A. (2023). Handling Infinite Loops in Streamlit Components. Streamlit Community. https://discuss.streamlit.io/
